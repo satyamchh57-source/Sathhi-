@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Saathi — Aapka AI Dost</title>
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700&family=Inter:wght@400;500;600&display=swap');
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: #1E1B2E;
+    color: #F5EFE6;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 18px 24px;
+    border-bottom: 1px solid #322D48;
+    background: #221E36;
+  }
+
+  .avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: linear-gradient(160deg, #F2A65A, #E88A4A);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Baloo 2', sans-serif;
+    font-weight: 700;
+    font-size: 18px;
+    color: #1E1B2E;
+    flex-shrink: 0;
+  }
+
+  .header-text h1 { font-family: 'Baloo 2', sans-serif; font-size: 19px; font-weight: 600; }
+  .header-text p { font-size: 13px; color: #A79FC2; margin-top: 2px; }
+  .status-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #7ED9A6; margin-right: 6px; }
+
+  main { flex: 1; display: flex; justify-content: center; overflow: hidden; }
+
+  #chat-container { width: 100%; max-width: 680px; display: flex; flex-direction: column; padding: 0 16px; }
+
+  #messages { flex: 1; overflow-y: auto; padding: 24px 4px; display: flex; flex-direction: column; gap: 14px; }
+
+  .msg { max-width: 78%; padding: 12px 16px; border-radius: 18px; font-size: 15px; line-height: 1.55; white-space: pre-wrap; word-wrap: break-word; }
+  .msg.friend { align-self: flex-start; background: #322D48; color: #F5EFE6; border-bottom-left-radius: 4px; }
+  .msg.me { align-self: flex-end; background: #F2A65A; color: #2A1B0B; border-bottom-right-radius: 4px; }
+  .msg.typing { align-self: flex-start; background: #322D48; color: #A79FC2; font-style: italic; }
+  .msg.system { align-self: center; background: transparent; color: #A79FC2; font-size: 13px; text-align: center; max-width: 90%; }
+
+  #input-row { display: flex; gap: 10px; padding: 16px 4px 20px; border-top: 1px solid #322D48; }
+
+  #input-row textarea {
+    flex: 1; resize: none; background: #322D48; border: 1px solid #45405E; border-radius: 14px;
+    color: #F5EFE6; font-family: 'Inter', sans-serif; font-size: 15px; padding: 12px 14px; outline: none; max-height: 120px;
+  }
+  #input-row textarea::placeholder { color: #8A83A3; }
+  #input-row textarea:focus { border-color: #F2A65A; }
+
+  #send-btn {
+    background: #F2A65A; color: #2A1B0B; border: none; border-radius: 14px; padding: 0 22px;
+    font-family: 'Inter', sans-serif; font-weight: 600; font-size: 15px; cursor: pointer; flex-shrink: 0;
+  }
+  #send-btn:hover { background: #F0B778; }
+  #send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  #messages::-webkit-scrollbar { width: 6px; }
+  #messages::-webkit-scrollbar-thumb { background: #45405E; border-radius: 3px; }
+
+  .disclaimer { text-align: center; font-size: 12px; color: #6E6787; padding: 0 24px 12px; }
+
+  .pay-btn {
+    background: #F2A65A; color: #2A1B0B; border: none; border-radius: 10px; padding: 8px 18px;
+    font-family: 'Inter', sans-serif; font-weight: 600; font-size: 14px; cursor: pointer; margin-top: 8px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="avatar">S</div>
+  <div class="header-text">
+    <h1>Saathi</h1>
+    <p><span class="status-dot"></span>Yaha hoon, baat karne ke liye</p>
+  </div>
+</header>
+
+<main>
+  <div id="chat-container">
+    <div id="messages"></div>
+    <div id="input-row">
+      <textarea id="user-input" rows="1" placeholder="Kuch bhi likho..."></textarea>
+      <button id="send-btn">Bhejo</button>
+    </div>
+    <p class="disclaimer">Saathi ek AI hai, insaan nahi. Agar mushkil waqt chal raha hai, kisi apne se ya professional se baat zaroor karo.</p>
+  </div>
+</main>
+
+<script>
+  // Apne backend ka live URL yaha daalo (Render/Railway par deploy karne ke baad)
+  const BACKEND_URL = 'http://localhost:3000';
+
+  // Har browser ke liye ek simple unique ID banate hain taaki free-message count track ho sake.
+  // Real app me isse login system se replace karna behtar hoga.
+  let userId = localStorage.getItem('saathi_user_id');
+  if (!userId) {
+    userId = 'user_' + Math.random().toString(36).slice(2) + Date.now();
+    localStorage.setItem('saathi_user_id', userId);
+  }
+
+  const messagesEl = document.getElementById('messages');
+  const inputEl = document.getElementById('user-input');
+  const sendBtn = document.getElementById('send-btn');
+
+  let conversation = [];
+
+  function addMessage(text, sender) {
+    const div = document.createElement('div');
+    div.className = 'msg ' + sender;
+    div.textContent = text;
+    messagesEl.appendChild(div);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    return div;
+  }
+
+  function addTyping() {
+    const div = document.createElement('div');
+    div.className = 'msg typing';
+    div.textContent = 'Saathi likh raha hai...';
+    messagesEl.appendChild(div);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    return div;
+  }
+
+  function showPaywall() {
+    const div = document.createElement('div');
+    div.className = 'msg system';
+    div.innerHTML = 'Aapke free messages khatam ho gaye.<br>';
+    const btn = document.createElement('button');
+    btn.className = 'pay-btn';
+    btn.textContent = 'Rs 49 me aage baat jaari rakho';
+    btn.onclick = startPayment;
+    div.appendChild(btn);
+    messagesEl.appendChild(div);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  async function startPayment() {
+    try {
+      const orderRes = await fetch(BACKEND_URL + '/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, amountInRupees: 49 })
+      });
+      const order = await orderRes.json();
+
+      const rzp = new Razorpay({
+        key: order.keyId,
+        amount: order.amount,
+        currency: order.currency,
+        order_id: order.orderId,
+        name: 'Saathi',
+        description: 'Chat continue karne ke liye',
+        theme: { color: '#F2A65A' },
+        handler: async function (response) {
+          const verifyRes = await fetch(BACKEND_URL + '/verify-payment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId,
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature
+            })
+          });
+          const verifyData = await verifyRes.json();
+          if (verifyData.success) {
+            addMessage('Payment ho gayi! Ab baat jaari rakh sakte ho.', 'friend');
+          } else {
+            addMessage('Payment verify nahi ho payi. Dobara try karo.', 'friend');
+          }
+        }
+      });
+      rzp.open();
+    } catch (err) {
+      console.error(err);
+      addMessage('Payment shuru karne me problem aa gayi.', 'friend');
+    }
+  }
+
+  async function sendMessage() {
+    const text = inputEl.value.trim();
+    if (!text) return;
+
+    addMessage(text, 'me');
+    conversation.push({ role: 'user', content: text });
+    inputEl.value = '';
+    inputEl.style.height = 'auto';
+    sendBtn.disabled = true;
+
+    const typingIndicator = addTyping();
+
+    try {
+      const response = await fetch(BACKEND_URL + '/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, messages: conversation })
+      });
+
+      typingIndicator.remove();
+
+      if (response.status === 402) {
+        showPaywall();
+        sendBtn.disabled = false;
+        return;
+      }
+
+      const data = await response.json();
+      addMessage(data.reply || 'Sorry yaar, kuch gadbad ho gayi.', 'friend');
+      conversation.push({ role: 'assistant', content: data.reply });
+
+    } catch (err) {
+      typingIndicator.remove();
+      addMessage('Connection me kuch problem aa gayi. Thodi der baad try karo.', 'friend');
+      console.error(err);
+    }
+
+    sendBtn.disabled = false;
+    inputEl.focus();
+  }
+
+  sendBtn.addEventListener('click', sendMessage);
+  inputEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+  inputEl.addEventListener('input', () => {
+    inputEl.style.height = 'auto';
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
+  });
+
+  addMessage('Hey! Main Saathi hoon. Kya chal raha hai zindagi me?', 'friend');
+</script>
+
+</body>
+  </html>
