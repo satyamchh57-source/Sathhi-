@@ -1,0 +1,16 @@
+{
+  "name": "saathi-backend",
+  "version": "1.0.0",
+  "description": "Backend for Saathi AI friend chatbot - handles free message limits and Razorpay payments",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "cors": "^2.8.5",
+    "razorpay": "^2.9.4",
+    "dotenv": "^16.4.5",
+    "lowdb": "^1.0.0"
+  }
+}
